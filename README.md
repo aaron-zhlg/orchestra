@@ -124,10 +124,30 @@ lead = Orchestrator(
 )
 ```
 
-For a *single* subagent, set it on the class or when constructing it:
+To point **one** subagent at its own endpoint while the others keep the shared
+client, register it with `.spec(...)` instead of the bare class (mix freely):
 
 ```python
-class CalculatorAgent(SubAgent):
+lead = Orchestrator(
+    [
+        CalculatorAgent,                       # uses the lead's shared client
+        ShoutAgent.spec(                        # this one gets its own endpoint
+            api_key="sk-...",
+            base_url="https://api.openai.com/v1",
+            model="gpt-5-mini",
+        ),
+    ],
+)
+```
+
+`.spec(**kwargs)` builds a fresh instance per task with those kwargs. Equivalently,
+hand it a ready client (handy when several subagents should share one non-lead
+endpoint): `ShoutAgent.spec(client=ChatClient(api_key=..., base_url=..., model=...))`.
+
+You can also bake the endpoint into the class itself:
+
+```python
+class LocalCalculator(SubAgent):
     name = "calculator"
     # ...
     def __init__(self, **kw):
