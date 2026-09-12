@@ -24,6 +24,79 @@ loop:
 | `SubAgent` | `orchestra/subagent.py` | The base class you subclass. Customize a prompt + tools; get a tool loop for free. |
 | `Orchestrator` | `orchestra/orchestrator.py` | The main agent: goal → plan → dispatch (parallel) → evaluate → synthesize. |
 
+## Architecture
+
+```mermaid
+flowchart TB
+    User(["User"]) -- goal --> Plan
+
+    subgraph Lead["Orchestrator · lead agent"]
+        direction TB
+        Plan["plan<br/>decompose + route"]
+        Dispatch{{"dispatch in parallel"}}
+        Eval["evaluate<br/>sufficient? or spawn more"]
+        Synth["synthesize"]
+        Cite["citation pass"]
+        Plan --> Dispatch
+        Eval -- "gap found" --> Dispatch
+        Eval -- "sufficient" --> Synth --> Cite
+    end
+
+    subgraph Workers["Subagents · one fresh instance per task"]
+        direction TB
+        SA1["SubAgent<br/>prompt + tools"]
+        SA2["SubAgent<br/>prompt + tools"]
+    end
+
+    Dispatch --> SA1 & SA2
+    SA1 & SA2 -- "findings + sources" --> Eval
+    SA1 -. "tool loop" .-> Tools[("tools / APIs")]
+    SA2 -. "tool loop" .-> Tools
+
+    Lead -. "Chat Completions" .-> LLM[("LLM endpoint(s)")]
+    Workers -. "Chat Completions" .-> LLM
+
+    Cite -- "report" --> User
+```
+
+## Sequence
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Lead as Orchestrator (lead)
+    participant LLM as LLM (ChatClient)
+    participant Sub as Subagent(s)
+    participant Tools as Tools / APIs
+
+    User->>Lead: run(goal)
+    Lead->>LLM: plan — decompose + route
+    LLM-->>Lead: assignments
+
+    par each assignment, in parallel
+        Lead->>Sub: run(objective) — fresh instance
+        loop tool-calling loop
+            Sub->>LLM: messages + tools
+            LLM-->>Sub: tool_calls
+            Sub->>Tools: execute tool
+            Tools-->>Sub: result
+        end
+        Sub-->>Lead: findings + sources
+    end
+
+    Lead->>LLM: evaluate — enough? gaps?
+    LLM-->>Lead: complete | follow_up
+    opt gap found and rounds remain
+        Note over Lead,Sub: spawn more subagents, loop back to dispatch
+    end
+
+    Lead->>LLM: synthesize final answer
+    LLM-->>Lead: draft
+    Lead->>LLM: citation pass
+    LLM-->>Lead: final report
+    Lead-->>User: report (answer + sources)
+```
+
 ## Install
 
 ```bash
